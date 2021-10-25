@@ -1,12 +1,10 @@
 package com.example.minipaint
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.Path
+import android.graphics.*
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import androidx.core.content.res.ResourcesCompat
 
 
@@ -22,6 +20,8 @@ class MyCanvasView(context: Context?) : View(context){
     private var motionTouchEventY = 0f
     private var currentX = 0f
     private var currentY = 0f
+
+    private lateinit var frame : Rect
 
     private val backgroundColor = ResourcesCompat.getColor(resources, R.color.colorBackground, null)
     private val drawColor = ResourcesCompat.getColor(resources, R.color.colorPaint, null)
@@ -61,14 +61,21 @@ class MyCanvasView(context: Context?) : View(context){
          */
         if (::extraBitmap.isInitialized) extraBitmap.recycle()
 
+
         extraBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         extraCanvas = Canvas(extraBitmap)
         extraCanvas.drawColor(backgroundColor)
+
+        // Calculate a rectangular frame around the picture.
+        val inset = 40
+        frame = Rect(inset, inset, width - inset, height - inset)
     }
 
     override fun onDraw(canvas: Canvas?) {
         super.onDraw(canvas)
         canvas?.drawBitmap(extraBitmap, 0f, 0f, null)
+        // Draw a frame around the canvas.
+        canvas?.drawRect(frame, paint)
     }
 
     /**
@@ -94,11 +101,32 @@ class MyCanvasView(context: Context?) : View(context){
     }
 
     private fun touchUp() {
-
+        // Reset the path so it doesn't get drawn again.
+        path.reset()
     }
 
-    private fun touchMove() {
 
+    private val touchTolerance = ViewConfiguration.get(context).scaledTouchSlop
+    /**
+     * Calculate the distance that has been moved (dx, dy).
+    If the movement was further than the touch tolerance, add a segment to the path.
+    Set the starting point for the next segment to the endpoint of this segment.
+    Using quadTo() instead of lineTo() create a smoothly drawn line without corners. See Bezier Curves.
+    Call invalidate() to (eventually call onDraw() and) redraw the view.
+     */
+    private fun touchMove() {
+        val dx = Math.abs(motionTouchEventX - currentX)
+        val dy = Math.abs(motionTouchEventY - currentY)
+        if (dx >= touchTolerance || dy >= touchTolerance) {
+            // QuadTo() adds a quadratic bezier from the last point,
+            // approaching control point (x1,y1), and ending at (x2,y2).
+            path.quadTo(currentX, currentY, (motionTouchEventX + currentX) / 2, (motionTouchEventY + currentY) / 2)
+            currentX = motionTouchEventX
+            currentY = motionTouchEventY
+            // Draw the path in the extra bitmap to cache it.
+            extraCanvas.drawPath(path, paint)
+        }
+        invalidate()
     }
 
 
